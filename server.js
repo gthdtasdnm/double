@@ -4,6 +4,10 @@
 // Zero-Dependency: HTTP + WebSockets kommen komplett aus der Deno-Runtime.
 
 const PORT = Number(Deno.env.get("PORT") ?? 8000);
+// Lokal 0.0.0.0, damit Mitspieler im WLAN direkt draufkommen. Hinter einem
+// Reverse Proxy gehört HOST=127.0.0.1 gesetzt, sonst ist der Dienst unter
+// Umgehung von Apache auch ohne HTTPS erreichbar.
+const HOST = Deno.env.get("HOST") ?? "0.0.0.0";
 const PUBLIC_DIR = new URL("./public/", import.meta.url);
 
 // ---------------------------------------------------------------------------
@@ -555,7 +559,7 @@ async function serveStatic(pathname) {
   }
 }
 
-Deno.serve({ port: PORT, hostname: "0.0.0.0", onListen: ({ port }) => {
+Deno.serve({ port: PORT, hostname: HOST, onListen: ({ port }) => {
   console.log(`\n  🎯  Double läuft:  http://localhost:${port}`);
   try {
     for (const net of Deno.networkInterfaces()) {

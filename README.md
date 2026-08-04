@@ -51,6 +51,10 @@ vom Server, damit niemand eine leichtere Ansicht bekommt.
 Läuft als eigener Dienst auf einem lokalen Port; Apache reicht `/double/`
 per Reverse Proxy durch. Die Vorlagen liegen in `deploy/`.
 
+Die vollständigen Server- und Deployment-Konventionen – Portvergabe, Apache,
+systemd, Fallstricke – stehen in **[SERVER.md](SERVER.md)**. Diese Datei ist
+projektunabhängig und gehört in jedes neue Spiel kopiert.
+
 ```sh
 # 1. Klonen und freien Port bestätigen
 sudo git clone <repo-url> /var/www/html/double

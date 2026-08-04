@@ -14,6 +14,8 @@ Group=www-data
 WorkingDirectory=/var/www/html/double
 ExecStart=/usr/local/bin/deno run --allow-net --allow-read --allow-env --allow-sys server.js
 Environment=PORT=8077
+# Nur lokal binden – erreichbar ist der Dienst ausschließlich über Apache.
+Environment=HOST=127.0.0.1
 # --------------------------------------------------------------------------
 
 # www-data darf nicht in sein Home schreiben; Deno legt seinen Cache sonst
