@@ -192,7 +192,10 @@ input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba
 .card-label { font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
 
 .card {
-  width: min(44vw, 66vh);
+  /* 66dvh hält die gewohnte Größe am Desktop; der dritte Wert greift nur auf
+     flachen Fenstern (Handy quer), wo sonst Topbar + Banner die Karte aus dem
+     sichtbaren Bereich schieben. */
+  width: min(44vw, 66dvh, 100dvh - 150px);
   aspect-ratio: 1;
   border-radius: 50%;
   background: radial-gradient(circle at 32% 28%, #fff, var(--card-bg) 70%);
@@ -287,6 +290,18 @@ input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba
 /* Hochformat / schmale Fenster: Karten untereinander */
 @media (max-aspect-ratio: 1/1) {
   .table { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  .card { width: min(86vw, 40vh); }
   .card-label { font-size: 11px; }
+
+  /* Beide Karten müssen zusammen in die Resthöhe passen, also 100dvh abzüglich
+     Topbar, Labels, Banner und Abstände (~210px), geteilt durch zwei.
+     dvh statt vh: vh zählt unter Android die eingeblendete URL-Leiste nicht
+     mit, die Seite rechnet dann mit mehr Höhe als sichtbar ist und die Karten
+     überlappen. */
+  .card { width: min(86vw, (100dvh - 220px) / 2); }
+
+  /* Etwas Höhe für die Karten zurückholen */
+  .sb { padding: 4px 10px; font-size: 12px; }
+  .sb b { font-size: 14px; }
+  .banner .big { font-size: clamp(32px, 9vw, 56px); }
+  .banner:has(.big) { min-height: calc(clamp(32px, 9vw, 56px) * 1.25); }
 }
