@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Double – finde das gleiche Symbol</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== Lobby ===================== -->
+<section id="view-lobby" class="view">
+  <header class="brand">
+    <h1>Double</h1>
+    <p>Zwei Karten. Genau ein gemeinsames Symbol. Wer es zuerst sieht, bekommt den Punkt.</p>
+  </header>
+
+  <div class="panel">
+    <label class="field">
+      <span>Dein Name</span>
+      <input id="nameInput" type="text" maxlength="16" placeholder="z.&nbsp;B. Alex" autocomplete="off">
+    </label>
+
+    <div class="create-row">
+      <label class="field grow">
+        <span>Neuen Raum eröffnen</span>
+        <input id="roomNameInput" type="text" maxlength="24" placeholder="Raumname (optional)" autocomplete="off">
+      </label>
+      <button id="createBtn" class="btn primary">Raum erstellen</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Offene Räume</h2>
+      <span id="roomCount" class="muted"></span>
+    </div>
+    <ul id="roomList" class="room-list"></ul>
+    <p id="noRooms" class="empty">Noch kein Raum offen – erstelle den ersten.</p>
+  </div>
+
+  <p class="hint">Tipp: Alle Geräte im gleichen WLAN können über die Netzwerk-Adresse aus der Server-Konsole mitspielen.</p>
+</section>
+
+<!-- ===================== Warteraum ===================== -->
+<section id="view-room" class="view">
+  <div class="panel room-panel">
+    <div class="panel-head">
+      <div>
+        <h2 id="roomTitle">Raum</h2>
+        <span class="muted">Code: <b id="roomCode"></b></span>
+      </div>
+      <button id="leaveBtn" class="btn ghost">Verlassen</button>
+    </div>
+
+    <ul id="playerList" class="player-list"></ul>
+
+    <div class="target-row">
+      <span>Spiel geht bis</span>
+      <div id="targetGroup" class="seg">
+        <button data-v="5">5 Punkte</button>
+        <button data-v="10">10 Punkte</button>
+        <button data-v="15">15 Punkte</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="readyBtn" class="btn primary">Bereit</button>
+      <button id="startBtn" class="btn primary">Runde starten</button>
+    </div>
+    <p id="roomHint" class="hint"></p>
+  </div>
+</section>
+
+<!-- ===================== Spiel ===================== -->
+<section id="view-game" class="view">
+  <div class="topbar">
+    <div id="scoreboard" class="scoreboard"></div>
+    <div class="topbar-right">
+      <span id="roundInfo" class="pill"></span>
+      <button id="leaveBtn2" class="btn ghost small">Verlassen</button>
+    </div>
+  </div>
+
+  <div class="table">
+    <div class="card-slot">
+      <div class="card-label">Mitte</div>
+      <div id="centerCard" class="card center"></div>
+    </div>
+    <div class="card-slot">
+      <div class="card-label">Deine Karte</div>
+      <div id="playerCard" class="card mine">
+        <div id="lockOverlay" class="lock-overlay"><span>Daneben!</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="banner" class="banner"></div>
+</section>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

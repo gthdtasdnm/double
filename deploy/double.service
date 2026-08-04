@@ -1,0 +1,28 @@
+[Unit]
+Description=Double – Multiplayer-Symbolsuchspiel
+After=network.target
+
+[Service]
+Type=simple
+
+# ---- Anpassen ------------------------------------------------------------
+# User        = der Account, dem das Klon-Verzeichnis gehört
+# WorkingDir  = wohin geklont wurde (neben die anderen Projekte)
+# ExecStart   = voller Pfad zum deno-Binary (`which deno` auf dem Server;
+#               per install.sh liegt es meist unter ~/.deno/bin/deno)
+User=CHANGEME
+WorkingDirectory=/home/CHANGEME/projects/double
+ExecStart=/usr/bin/deno run --allow-net --allow-read --allow-env --allow-sys server.js
+Environment=PORT=8077
+# --------------------------------------------------------------------------
+
+Restart=always
+RestartSec=3
+
+# Das Spiel hält seinen Zustand nur im RAM und schreibt nichts auf Platte.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
