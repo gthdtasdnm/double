@@ -53,11 +53,12 @@ per Reverse Proxy durch. Die Vorlagen liegen in `deploy/`.
 
 ```sh
 # 1. Klonen und freien Port bestätigen
-git clone <repo-url> ~/projects/double
+sudo git clone <repo-url> /var/www/html/double
+sudo chown -R www-data:www-data /var/www/html/double
 ss -tlnp | grep 8077          # muss leer sein, sonst PORT in der Unit ändern
 
-# 2. Dienst einrichten (User/Pfade/Port in der Datei anpassen!)
-sudo cp ~/projects/double/deploy/double.service /etc/systemd/system/
+# 2. Dienst einrichten (deno-Pfad/Port in der Datei prüfen!)
+sudo cp /var/www/html/double/deploy/double.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now double
 systemctl status double
