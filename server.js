@@ -136,13 +136,21 @@ const rooms = new Map();
 const conns = new Set();
 
 const uid = () => crypto.randomUUID();
-const shortId = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 
-function createRoom(name) {
+/** Ohne I, O, 0 und 1 – die sind auf einem Handydisplay nicht zu unterscheiden. */
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const shortId = () => {
+  let c = "";
+  for (let k = 0; k < 4; k++) c += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return c;
+};
+
+function createRoom(name, isPublic = true) {
   let id = shortId();
   while (rooms.has(id)) id = shortId();
   const room = {
     id,
+    isPublic: !!isPublic,
     name: name || `Raum ${id}`,
     players: [],           // {id, name, ready, score, conn, connected, lockUntil, dropTimer}
     state: "lobby",        // lobby | countdown | playing | roundEnd | finished
@@ -169,12 +177,20 @@ function roomSummary(r) {
     max: MAX_PLAYERS,
     host: r.players[0]?.name ?? "—",
     state: r.state,
+    target: r.target,
     joinable: r.players.length < MAX_PLAYERS && (r.state === "lobby" || r.state === "finished"),
   };
 }
 
+/**
+ * Was auf der Startseite steht: offene, öffentliche Räume, in denen noch
+ * jemand sitzt. Private Räume erreicht man nur über den Code.
+ */
 function roomList() {
   return [...rooms.values()]
+    .filter((r) => r.isPublic &&
+      r.players.length > 0 && r.players.length < MAX_PLAYERS &&
+      (r.state === "lobby" || r.state === "finished"))
     .sort((a, b) => a.createdAt - b.createdAt)
     .map(roomSummary);
 }
@@ -199,6 +215,7 @@ function snapshotFor(room, player) {
     room: {
       id: room.id,
       name: room.name,
+      isPublic: room.isPublic,
       state: room.state,
       round: room.round,
       target: room.target,
@@ -405,13 +422,24 @@ function handleMessage(conn, msg) {
     case "create": {
       const name = String(msg.name ?? "").trim().slice(0, 16) || "Spieler";
       const roomName = String(msg.roomName ?? "").trim().slice(0, 24);
-      const room = createRoom(roomName);
+      const room = createRoom(roomName, msg.isPublic !== false);
       joinRoom(conn, room, name);
       break;
     }
 
+    case "visibility": {
+      const { room, player } = ctx(conn);
+      // Nur der Host, und nur solange nicht gespielt wird.
+      if (!room || !player || room.players[0]?.id !== player.id) return;
+      if (room.state !== "lobby" && room.state !== "finished") return;
+      room.isPublic = !!msg.isPublic;
+      broadcastRoom(room);
+      broadcastLobby();
+      break;
+    }
+
     case "join": {
-      const room = rooms.get(String(msg.roomId ?? "").toUpperCase());
+      const room = rooms.get(String(msg.roomId ?? "").toUpperCase().trim());
       if (!room) return send(conn, { t: "error", msg: "Raum existiert nicht (mehr)." });
       if (room.players.length >= MAX_PLAYERS) return send(conn, { t: "error", msg: "Raum ist voll." });
       if (room.state !== "lobby" && room.state !== "finished") {
@@ -423,7 +451,7 @@ function handleMessage(conn, msg) {
     }
 
     case "rejoin": {
-      const room = rooms.get(String(msg.roomId ?? "").toUpperCase());
+      const room = rooms.get(String(msg.roomId ?? "").toUpperCase().trim());
       const player = room?.players.find((p) => p.id === msg.pid);
       if (!room || !player) return send(conn, { t: "error", msg: "Sitzung abgelaufen.", fatal: true });
       if (player.dropTimer) { clearTimeout(player.dropTimer); player.dropTimer = null; }

@@ -94,9 +94,25 @@ function toast(text) {
 /* ------------------------------------------------------------------ */
 /* Lobby                                                               */
 /* ------------------------------------------------------------------ */
+const NAME_KEY = "spiele_name";   // gemeinsam mit den anderen drei Spielen
+
+// Sitzplatz-Tierchen. Gleiche Liste und gleiche Ableitung in allen vier
+// Spielen, damit dieselbe Person überall dasselbe Zeichen bekommt.
+const AVATARS = ["🦊", "🐙", "🦅", "🐺", "🦁", "🐉"];
+const avatarFor = (id) =>
+  AVATARS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATARS.length];
+
 const nameInput = $("nameInput");
-nameInput.value = localStorage.getItem("dbl_name") || "";
-nameInput.addEventListener("input", () => localStorage.setItem("dbl_name", nameInput.value));
+nameInput.value = localStorage.getItem(NAME_KEY) || localStorage.getItem("dbl_name") || "";
+nameInput.addEventListener("input", () => localStorage.setItem(NAME_KEY, nameInput.value));
+
+let visibility = "public";
+for (const b of document.querySelectorAll("[data-vis]")) {
+  b.onclick = () => {
+    visibility = b.dataset.vis;
+    document.querySelectorAll("[data-vis]").forEach((x) => x.classList.toggle("sel", x === b));
+  };
+}
 
 function playerName() {
   const n = nameInput.value.trim();
@@ -104,33 +120,37 @@ function playerName() {
 }
 
 $("createBtn").onclick = () => {
-  send({ t: "create", name: playerName(), roomName: $("roomNameInput").value.trim() });
+  send({ t: "create", name: playerName(), isPublic: visibility === "public" });
 };
 
-function renderRoomList(list) {
-  const ul = $("roomList");
-  ul.innerHTML = "";
-  $("noRooms").style.display = list.length ? "none" : "block";
-  $("roomCount").textContent = list.length ? `${list.length} Raum${list.length > 1 ? "e" : ""}` : "";
+function joinByCode() {
+  const code = $("codeInput").value.toUpperCase().trim();
+  if (code.length !== 4) { $("codeInput").focus(); return toast("Der Code hat vier Zeichen."); }
+  send({ t: "join", roomId: code, name: playerName() });
+}
+$("joinBtn").onclick = joinByCode;
+$("codeInput").onkeydown = (e) => { if (e.key === "Enter") joinByCode(); };
+nameInput.onkeydown = (e) => { if (e.key === "Enter") $("createBtn").click(); };
 
+function renderRoomList(list) {
+  const box = $("roomList");
+  box.innerHTML = "";
+  $("roomCount").textContent = list.length ? `(${list.length})` : "";
+  if (!list.length) {
+    box.innerHTML =
+      '<div class="rooms-empty">Gerade ist kein Raum offen. Eröffne einen – ' +
+      'er erscheint dann bei den anderen in der Liste.</div>';
+    return;
+  }
   for (const r of list) {
-    const li = document.createElement("li");
-    const running = r.state !== "lobby" && r.state !== "finished";
-    li.innerHTML = `
-      <div>
-        <div class="rname">${esc(r.name)}</div>
-        <div class="rmeta">Host: ${esc(r.host)} · ${r.players}/${r.max} Spieler${running ? " · läuft gerade" : ""}</div>
-      </div>
-      <div class="spacer"></div>`;
-    const btn = document.createElement("button");
-    btn.className = "btn primary small";
-    btn.textContent = "Beitreten";
-    btn.disabled = !r.joinable;
-    if (r.players >= r.max) btn.textContent = "Voll";
-    else if (running) btn.textContent = "Läuft";
-    btn.onclick = () => send({ t: "join", roomId: r.id, name: playerName() });
-    li.appendChild(btn);
-    ul.appendChild(li);
+    const b = document.createElement("button");
+    b.className = "roomrow";
+    b.innerHTML = `
+      <span class="roomrow-name">${esc(r.host)}</span>
+      <span class="roomrow-meta">${r.players}/${r.max} · bis ${r.target}</span>
+      <span class="roomrow-code">${r.id}</span>`;
+    b.onclick = () => send({ t: "join", roomId: r.id, name: playerName() });
+    box.appendChild(b);
   }
 }
 
@@ -161,6 +181,20 @@ $("leaveBtn").onclick = $("leaveBtn2").onclick = () => { send({ t: "leave" }); c
 
 $("readyBtn").onclick = () => send({ t: "ready", ready: !state.you.ready });
 $("startBtn").onclick = () => send({ t: "start" });
+
+$("copyBtn").onclick = async () => {
+  if (!state?.room) return;
+  // Gegen document.baseURI gebaut: funktioniert unter /double/ hinter dem
+  // Reverse Proxy genauso wie lokal auf localhost:8000.
+  const link = new URL("#" + state.room.id, document.baseURI).href;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("Link kopiert – schick ihn rum.");
+  } catch {
+    // Ohne Zwischenablage (kein HTTPS, alter Browser) wenigstens den Code zeigen.
+    toast(`Code: ${state.room.id}`);
+  }
+};
 for (const b of $("targetGroup").children) {
   b.onclick = () => { if (state?.you.isHost) send({ t: "target", value: Number(b.dataset.v) }); };
 }
@@ -168,28 +202,32 @@ for (const b of $("targetGroup").children) {
 function renderRoom(s) {
   $("roomTitle").textContent = s.room.name;
   $("roomCode").textContent = s.room.id;
+  $("roomVis").textContent = s.room.isPublic
+    ? "Öffentlich – steht in der Liste"
+    : "Privat – nur mit Code";
 
-  const ul = $("playerList");
-  ul.innerHTML = "";
-  s.players.forEach((p) => {
-    const li = document.createElement("li");
-    li.className = (p.ready || p.host ? "ready " : "") + (p.id === s.you.id ? "me" : "");
-    li.innerHTML = `<span class="dot"></span><span>${esc(p.name)}</span>
-      ${p.host ? '<span class="tag host">Host</span>' : (p.ready ? '<span class="tag ready">Bereit</span>' : '<span class="tag">wartet</span>')}
-      ${p.connected ? "" : '<span class="tag">offline</span>'}
-      <div class="spacer" style="flex:1"></div>`;
-    ul.appendChild(li);
-  });
-  for (let i = s.players.length; i < s.room.maxPlayers; i++) {
-    const li = document.createElement("li");
-    li.style.opacity = ".4";
-    li.innerHTML = '<span class="dot"></span><span>freier Platz</span>';
-    ul.appendChild(li);
+  const box = $("playerList");
+  box.innerHTML = "";
+  for (let i = 0; i < s.room.maxPlayers; i++) {
+    const p = s.players[i];
+    const d = document.createElement("div");
+    if (!p) {
+      d.className = "seat empty";
+      d.innerHTML = '<div class="av">🪑</div><div class="nm">frei</div><div class="st">wartet</div>';
+    } else {
+      d.className = "seat" + (p.ready || p.host ? " ready" : "") + (p.connected ? "" : " off");
+      d.innerHTML = `
+        <div class="av">${avatarFor(p.id)}</div>
+        <div class="nm">${esc(p.name)}${p.id === s.you.id ? " (du)" : ""}</div>
+        <div class="st">${!p.connected ? "weg" : p.host ? "startet" : p.ready ? "✓ bereit" : "wartet"}</div>
+        ${p.host ? '<div class="host">HOST</div>' : ""}`;
+    }
+    box.appendChild(d);
   }
 
   const grp = $("targetGroup");
   grp.classList.toggle("locked", !s.you.isHost);
-  for (const b of grp.children) b.classList.toggle("on", Number(b.dataset.v) === s.room.target);
+  for (const b of grp.children) b.classList.toggle("sel", Number(b.dataset.v) === s.room.target);
 
   const readyBtn = $("readyBtn");
   const startBtn = $("startBtn");
@@ -385,6 +423,11 @@ function beep(freq, dur, type = "sine") {
     o.stop(audioCtx.currentTime + dur);
   } catch { /* egal */ }
 }
+
+// Geteilter Link: .../double/#AB3K legt den Code ins Feld. Beigetreten wird
+// erst auf Knopfdruck – vorher fehlt ja noch der Name.
+const shared = (location.hash || "").replace("#", "").toUpperCase().trim();
+if (/^[A-Z0-9]{4}$/.test(shared)) $("codeInput").value = shared;
 
 showView("lobby");
 connect();
