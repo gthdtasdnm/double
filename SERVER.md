@@ -38,11 +38,22 @@ ss -tlnp | grep <port>     # muss leer sein
 ss -tlnp                   # Gesamtübersicht
 ```
 
-| Port | Projekt | Prozessmanager |
-|---|---|---|
-| 3000 | pickup | PM2 |
-| 8077 | double | systemd |
-| 8080 | magictowers | PM2 |
+| Port | Projekt | Prozessmanager | Verzeichnis |
+|---|---|---|---|
+| 3000 | pickup | PM2 | `/var/www/html/pickup` |
+| 8077 | double | systemd | `/var/www/html/double` |
+| 8078 | reflex | systemd | `/var/www/html/reflex` |
+| 8090 | magictowers | PM2 | **`/opt/magictowers`** |
+
+**Das Verzeichnis steht nicht fest.** Magic Towers liegt unter `/opt`, nicht im
+DocumentRoot – und unter `/var/www/html/magictowers` liegt eine alte Kopie, die
+niemand ausliefert. Wer dort `git pull` macht, ändert nichts am laufenden Spiel.
+Vor jedem Deployment die Wahrheit beim Prozessmanager erfragen, nicht hier:
+
+```bash
+pm2 describe <projekt> | grep -E "exec cwd|script path"
+systemctl show -p WorkingDirectory <projekt>.service
+```
 
 Nextcloud und die beiden Tradingbots belegen weitere Ports – immer erst die
 Gesamtübersicht ansehen, diese Tabelle ist nur so aktuell wie ihr letzter Edit.
