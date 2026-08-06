@@ -237,13 +237,14 @@ function renderRoom(s) {
   readyBtn.textContent = s.you.ready ? "Doch nicht bereit" : "Bereit";
   readyBtn.className = "btn " + (s.you.ready ? "ok" : "primary");
 
-  const others = s.players.slice(1);
-  const missing = others.filter((p) => !p.ready).map((p) => p.name);
-  const tooFew = s.players.length < s.room.minPlayers;
+  // Wer gerade weg ist, zählt nicht mit – sonst blockiert er den Start.
+  const here = s.players.filter((p) => p.connected);
+  const missing = here.filter((p) => !p.ready && !p.host).map((p) => p.name);
+  const tooFew = here.length < s.room.minPlayers;
   startBtn.disabled = tooFew || missing.length > 0;
 
   $("roomHint").textContent = tooFew
-    ? `Es fehlt noch mindestens ${s.room.minPlayers - s.players.length} Spieler·in (${s.room.minPlayers}–${s.room.maxPlayers} können mitspielen).`
+    ? `Es fehlt noch mindestens ${s.room.minPlayers - here.length} Spieler·in (${s.room.minPlayers}–${s.room.maxPlayers} können mitspielen).`
     : missing.length
       ? (s.you.isHost ? `Noch nicht bereit: ${missing.join(", ")}` : "Warte darauf, dass alle bereit sind …")
       : (s.you.isHost ? "Alle bereit – du kannst starten!" : "Alle bereit – der Host startet gleich.");

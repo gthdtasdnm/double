@@ -128,7 +128,14 @@ const MIN_PLAYERS = 2;
 const COUNTDOWN_MS = 3200;
 const ROUND_END_MS = 2800;
 const PENALTY_MS = 1500;
-const DISCONNECT_GRACE_MS = 10000;
+
+/**
+ * Karenzzeit: so lange bleibt ein Platz reserviert, wenn die Verbindung weg ist.
+ * Wer den Link teilt, wechselt dabei zwangsläufig die App – auf dem Handy stirbt
+ * dabei der Socket. Ohne diese Reserve löst sich der eigene Raum genau in dem
+ * Moment auf, in dem man ihn herumschickt. Gleicher Wert in allen vier Spielen.
+ */
+const DISCONNECT_GRACE_MS = 60_000;
 
 /** @type {Map<string, Room>} */
 const rooms = new Map();
@@ -152,6 +159,7 @@ function createRoom(name, isPublic = true) {
     id,
     isPublic: !!isPublic,
     name: name || `Raum ${id}`,
+    hostId: null,
     players: [],           // {id, name, ready, score, conn, connected, lockUntil, dropTimer}
     state: "lobby",        // lobby | countdown | playing | roundEnd | finished
     round: 0,
@@ -169,13 +177,32 @@ function createRoom(name, isPublic = true) {
   return room;
 }
 
+/** Wer gerade wirklich im Raum sitzt. Reservierte Plätze zählen nicht mit. */
+function present(room) {
+  return room.players.filter((p) => p.connected);
+}
+
+/**
+ * Der Host ist immer jemand, der auch da ist. Geht er raus oder ist seine
+ * Verbindung weg, rückt der nächste Anwesende nach – sonst steht der Raum ohne
+ * Host da und niemand kann die Partie starten.
+ */
+function ensureHost(room) {
+  const current = room.players.find((p) => p.id === room.hostId);
+  if (current?.connected) return;
+  const next = present(room)[0] ?? room.players[0];
+  room.hostId = next ? next.id : null;
+}
+
 function roomSummary(r) {
   return {
     id: r.id,
     name: r.name,
-    players: r.players.length,
+    // Anwesende, nicht belegte Plätze: ein reservierter Platz gehört noch
+    // jemandem, sitzt aber gerade niemand drauf.
+    players: present(r).length,
     max: MAX_PLAYERS,
-    host: r.players[0]?.name ?? "—",
+    host: r.players.find((p) => p.id === r.hostId)?.name ?? "—",
     state: r.state,
     target: r.target,
     joinable: r.players.length < MAX_PLAYERS && (r.state === "lobby" || r.state === "finished"),
@@ -184,12 +211,14 @@ function roomSummary(r) {
 
 /**
  * Was auf der Startseite steht: offene, öffentliche Räume, in denen noch
- * jemand sitzt. Private Räume erreicht man nur über den Code.
+ * jemand sitzt. Gezählt wird nach *anwesenden* Spielern – sonst steht ein Raum,
+ * dessen Leute gerade alle weg sind, noch in der Liste und zeigt dabei „0/4".
+ * Private Räume erreicht man nur über den Code.
  */
 function roomList() {
   return [...rooms.values()]
     .filter((r) => r.isPublic &&
-      r.players.length > 0 && r.players.length < MAX_PLAYERS &&
+      present(r).length > 0 && r.players.length < MAX_PLAYERS &&
       (r.state === "lobby" || r.state === "finished"))
     .sort((a, b) => a.createdAt - b.createdAt)
     .map(roomSummary);
@@ -225,16 +254,16 @@ function snapshotFor(room, player) {
     you: {
       id: player.id,
       name: player.name,
-      isHost: room.players[0]?.id === player.id,
+      isHost: room.hostId === player.id,
       ready: player.ready,
       lockUntil: player.lockUntil,
     },
-    players: room.players.map((p, i) => ({
+    players: room.players.map((p) => ({
       id: p.id,
       name: p.name,
       score: p.score,
       ready: p.ready,
-      host: i === 0,
+      host: p.id === room.hostId,
       connected: p.connected,
     })),
     center: room.center ? { layout: room.center.layout } : null,
@@ -269,9 +298,14 @@ function send(conn, obj) {
 // ---------------------------------------------------------------------------
 // Spiellogik
 // ---------------------------------------------------------------------------
+/**
+ * Der Host hat keinen Bereit-Knopf – er drückt „Start". Also zählt er als
+ * bereit, sonst käme die Partie nie los. Wer gerade weg ist, zählt nicht mit.
+ */
 function everyoneReady(room) {
-  const others = room.players.slice(1);
-  return room.players.length >= MIN_PLAYERS && others.every((p) => p.ready && p.connected);
+  const here = present(room);
+  return here.length >= MIN_PLAYERS &&
+    here.every((p) => p.ready || p.id === room.hostId);
 }
 
 function startGame(room) {
@@ -295,7 +329,7 @@ function beginCountdown(room) {
 }
 
 function startRound(room) {
-  if (room.players.length < MIN_PLAYERS) { abortToLobby(room); return; }
+  if (present(room).length < MIN_PLAYERS) { abortToLobby(room); return; }
 
   const idx = [...DECK.keys()];
   for (let i = idx.length - 1; i > 0; i--) {
@@ -401,7 +435,8 @@ function leaveRoom(conn, { immediate = true } = {}) {
   room.hands.delete(player.id);
 
   if (room.players.length === 0) { destroyRoom(room); return; }
-  if (room.state !== "lobby" && room.state !== "finished" && room.players.length < MIN_PLAYERS) {
+  ensureHost(room);
+  if (room.state !== "lobby" && room.state !== "finished" && present(room).length < MIN_PLAYERS) {
     abortToLobby(room);
     return;
   }
@@ -430,7 +465,7 @@ function handleMessage(conn, msg) {
     case "visibility": {
       const { room, player } = ctx(conn);
       // Nur der Host, und nur solange nicht gespielt wird.
-      if (!room || !player || room.players[0]?.id !== player.id) return;
+      if (!room || !player || room.hostId !== player.id) return;
       if (room.state !== "lobby" && room.state !== "finished") return;
       room.isPublic = !!msg.isPublic;
       broadcastRoom(room);
@@ -460,6 +495,7 @@ function handleMessage(conn, msg) {
       player.connected = true;
       conn.roomId = room.id;
       conn.playerId = player.id;
+      ensureHost(room);
       send(conn, { t: "joined", roomId: room.id, pid: player.id });
       broadcastRoom(room);
       break;
@@ -477,7 +513,7 @@ function handleMessage(conn, msg) {
 
     case "target": {
       const { room, player } = ctx(conn);
-      if (!room || !player || room.players[0]?.id !== player.id) return;
+      if (!room || !player || room.hostId !== player.id) return;
       const v = Number(msg.value);
       if ([5, 10, 15].includes(v)) { room.target = v; broadcastRoom(room); }
       break;
@@ -486,7 +522,7 @@ function handleMessage(conn, msg) {
     case "start": {
       const { room, player } = ctx(conn);
       if (!room || !player) return;
-      if (room.players[0]?.id !== player.id) return;
+      if (room.hostId !== player.id) return;
       if (room.state === "finished") resetToLobby(room);
       if (room.state !== "lobby") return;
       if (!everyoneReady(room)) {
@@ -505,7 +541,7 @@ function handleMessage(conn, msg) {
 
     case "again": {
       const { room, player } = ctx(conn);
-      if (!room || !player || room.players[0]?.id !== player.id) return;
+      if (!room || !player || room.hostId !== player.id) return;
       resetToLobby(room);
       break;
     }
@@ -539,6 +575,8 @@ function joinRoom(conn, room, name) {
   room.players.push(player);
   conn.roomId = room.id;
   conn.playerId = player.id;
+  // Wer als Erster im Raum ist, ist Host und startet die Partie.
+  ensureHost(room);
   send(conn, { t: "joined", roomId: room.id, pid: player.id });
   broadcastRoom(room);
 }
@@ -550,6 +588,9 @@ function handleClose(conn) {
   if (player.conn !== conn) return;
   player.connected = false;
   player.ready = false;
+  // Der Host darf nicht an einem Abwesenden kleben bleiben, sonst kann
+  // niemand mehr starten, bis die Karenzzeit abgelaufen ist.
+  ensureHost(room);
   broadcastRoom(room);
   player.dropTimer = setTimeout(() => {
     if (player.connected) return;
