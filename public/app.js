@@ -16,6 +16,9 @@ let renderedCenterKey = "";
 let renderedHandKey = "";
 let lockTimer = null;
 let reconnectTimer = null;
+// Beitritt über einen geteilten Link. Gesendet wird erst, wenn die Verbindung
+// wirklich steht – vorher fiele die Nachricht lautlos unter den Tisch.
+let pendingJoin = null;
 
 const serverNow = () => Date.now() + clockOffset;
 
@@ -31,7 +34,10 @@ function connect() {
 
   ws.onopen = () => {
     if (pid && roomId) send({ t: "rejoin", roomId, pid });
-    else send({ t: "list" });
+    else if (pendingJoin) {
+      send({ t: "join", roomId: pendingJoin, name: playerName() });
+      pendingJoin = null;   // nur beim ersten Verbinden, nicht bei jedem Reconnect
+    } else send({ t: "list" });
   };
 
   ws.onmessage = (e) => {
@@ -177,7 +183,13 @@ function applyState(s) {
 /* ------------------------------------------------------------------ */
 /* Warteraum                                                           */
 /* ------------------------------------------------------------------ */
-$("leaveBtn").onclick = $("leaveBtn2").onclick = () => { send({ t: "leave" }); clearSession(); showView("lobby"); };
+$("leaveBtn").onclick = $("leaveBtn2").onclick = () => {
+  send({ t: "leave" });
+  clearSession();
+  // Den Code aus der Adresse nehmen, sonst führt ein Neuladen wieder hinein.
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  showView("lobby");
+};
 
 $("readyBtn").onclick = () => send({ t: "ready", ready: !state.you.ready });
 $("startBtn").onclick = () => send({ t: "start" });
@@ -425,10 +437,34 @@ function beep(freq, dur, type = "sine") {
   } catch { /* egal */ }
 }
 
-// Geteilter Link: .../double/#AB3K legt den Code ins Feld. Beigetreten wird
-// erst auf Knopfdruck – vorher fehlt ja noch der Name.
+/* ------------------------------------------------------------------ */
+/* Geteilter Link                                                      */
+/* ------------------------------------------------------------------ */
+// .../double/#AB3K – der Link ist die ganze Interaktion. Wer ihn öffnet, soll
+// im Raum landen und nicht auf einer Startseite, auf der er den Raum erst
+// suchen muss. Ist der Name schon bekannt, passiert das ohne einen Klick.
 const shared = (location.hash || "").replace("#", "").toUpperCase().trim();
-if (/^[A-Z0-9]{4}$/.test(shared)) $("codeInput").value = shared;
+const sharedCode = /^[A-Z0-9]{4}$/.test(shared) ? shared : null;
 
+/** Startseite auf „du bist eingeladen" umstellen: eine Frage, ein Knopf. */
+function invitationMode() {
+  if (!sharedCode) return;
+  $("codeInput").value = sharedCode;
+  const tag = document.querySelector("#view-lobby .tag");
+  if (tag) tag.textContent = `Du bist eingeladen – Raum ${sharedCode}.`;
+
+  // Den Knopf austauschen statt umbeschriften: sonst bliebe der alte
+  // Klick-Handler dran und würde zusätzlich einen neuen Raum aufmachen.
+  const alt = $("createBtn");
+  const btn = alt.cloneNode(true);
+  btn.textContent = "Beitreten";
+  alt.replaceWith(btn);
+  btn.onclick = () => send({ t: "join", roomId: sharedCode, name: playerName() });
+}
+
+// Name schon bekannt? Dann ohne Zwischenschritt hinein.
+if (sharedCode && (localStorage.getItem(NAME_KEY) || "").trim()) pendingJoin = sharedCode;
+
+invitationMode();
 showView("lobby");
 connect();

@@ -130,12 +130,23 @@ const ROUND_END_MS = 2800;
 const PENALTY_MS = 1500;
 
 /**
- * Karenzzeit: so lange bleibt ein Platz reserviert, wenn die Verbindung weg ist.
- * Wer den Link teilt, wechselt dabei zwangsläufig die App – auf dem Handy stirbt
- * dabei der Socket. Ohne diese Reserve löst sich der eigene Raum genau in dem
- * Moment auf, in dem man ihn herumschickt. Gleicher Wert in allen vier Spielen.
+ * Zwei verschiedene Dinge, die man leicht verwechselt:
+ *
+ * ROOM_IDLE_MS – so lange bleibt ein *Raum* offen, in dem gerade niemand sitzt.
+ *   Das ist der Puffer fürs Link-Teilen: dafür muss man den Tab verlassen, und
+ *   auf dem Handy stirbt dabei der Socket. Der Raum steht weiter, wer
+ *   zurückkommt, tritt einfach wieder ein. In der Raumliste taucht er nicht
+ *   auf, solange niemand drin sitzt – erreichbar ist er nur über Code und Link.
+ *
+ * SEAT_GRACE_MS – so lange bleibt ein *Platz* reserviert. Das braucht es nur
+ *   während einer laufenden Partie, weil dort Punkte am Platz hängen. In der
+ *   Lobby hängt daran nichts, also wird der Platz sofort frei – ein Sitz, auf
+ *   dem sichtbar niemand sitzt, verwirrt nur.
+ *
+ * Gleiche Werte und gleiche Regel in allen vier Spielen.
  */
-const DISCONNECT_GRACE_MS = 60_000;
+const ROOM_IDLE_MS = 5 * 60_000;
+const SEAT_GRACE_MS = 60_000;
 
 /** @type {Map<string, Room>} */
 const rooms = new Map();
@@ -171,10 +182,26 @@ function createRoom(name, isPublic = true) {
     result: null,          // {winnerId, winnerName, match, ms}
     lastMiss: null,        // {name, at}
     timer: null,
+    idleTimer: null,       // läuft, solange niemand im Raum sitzt
     createdAt: Date.now(),
   };
   rooms.set(id, room);
   return room;
+}
+
+/**
+ * Ein Raum, in dem niemand mehr sitzt, wird nicht sofort abgeräumt – sonst wäre
+ * er genau dann weg, wenn man gerade den Link verschickt.
+ */
+function scheduleIdleClose(room) {
+  if (room.idleTimer) clearTimeout(room.idleTimer);
+  room.idleTimer = setTimeout(() => {
+    if (room.players.length === 0) destroyRoom(room);
+  }, ROOM_IDLE_MS);
+}
+
+function cancelIdleClose(room) {
+  if (room.idleTimer) { clearTimeout(room.idleTimer); room.idleTimer = null; }
 }
 
 /** Wer gerade wirklich im Raum sitzt. Reservierte Plätze zählen nicht mit. */
@@ -230,6 +257,8 @@ function clearTimer(room) {
 
 function destroyRoom(room) {
   clearTimer(room);
+  cancelIdleClose(room);
+  for (const p of room.players) if (p.dropTimer) clearTimeout(p.dropTimer);
   rooms.delete(room.id);
   broadcastLobby();
 }
@@ -329,7 +358,9 @@ function beginCountdown(room) {
 }
 
 function startRound(room) {
-  if (present(room).length < MIN_PLAYERS) { abortToLobby(room); return; }
+  // Nur wenn wirklich niemand mehr da ist, hat die Partie keinen Sinn mehr.
+  // Wer als Einziger übrig bleibt, spielt sie zu Ende.
+  if (present(room).length === 0) { abortToLobby(room); return; }
 
   const idx = [...DECK.keys()];
   for (let i = idx.length - 1; i > 0; i--) {
@@ -434,12 +465,17 @@ function leaveRoom(conn, { immediate = true } = {}) {
   room.players = room.players.filter((p) => p.id !== player.id);
   room.hands.delete(player.id);
 
-  if (room.players.length === 0) { destroyRoom(room); return; }
-  ensureHost(room);
-  if (room.state !== "lobby" && room.state !== "finished" && present(room).length < MIN_PLAYERS) {
-    abortToLobby(room);
+  if (room.players.length === 0) {
+    // Niemand mehr da: der Raum bleibt eine Weile offen, fängt aber von vorn
+    // an. In der Raumliste steht er nicht – nur Code und Link führen hin.
+    resetToLobby(room);
+    scheduleIdleClose(room);
+    broadcastLobby();
     return;
   }
+  ensureHost(room);
+  // Kein Abbruch mehr, wenn zu wenige übrig sind: wer bleibt, spielt die Partie
+  // zu Ende.
   if (immediate && (room.state === "countdown" || room.state === "playing")) {
     // Karte des verlassenden Spielers ist weg – Runde neu austeilen
     startRound(room);
@@ -480,6 +516,7 @@ function handleMessage(conn, msg) {
       if (room.state !== "lobby" && room.state !== "finished") {
         return send(conn, { t: "error", msg: "In diesem Raum läuft gerade ein Spiel." });
       }
+      cancelIdleClose(room);
       const name = String(msg.name ?? "").trim().slice(0, 16) || "Spieler";
       joinRoom(conn, room, name);
       break;
@@ -489,6 +526,7 @@ function handleMessage(conn, msg) {
       const room = rooms.get(String(msg.roomId ?? "").toUpperCase().trim());
       const player = room?.players.find((p) => p.id === msg.pid);
       if (!room || !player) return send(conn, { t: "error", msg: "Sitzung abgelaufen.", fatal: true });
+      cancelIdleClose(room);
       if (player.dropTimer) { clearTimeout(player.dropTimer); player.dropTimer = null; }
       if (player.conn && player.conn !== conn) player.conn.roomId = null;
       player.conn = conn;
@@ -588,16 +626,26 @@ function handleClose(conn) {
   if (player.conn !== conn) return;
   player.connected = false;
   player.ready = false;
-  // Der Host darf nicht an einem Abwesenden kleben bleiben, sonst kann
-  // niemand mehr starten, bis die Karenzzeit abgelaufen ist.
+
+  // In der Lobby wird der Platz sofort frei – dort hängt nichts daran, und ein
+  // Sitz mit niemandem drauf verwirrt die anderen nur. Der Raum bleibt
+  // trotzdem offen, wer zurückkommt, tritt einfach wieder ein.
+  if (room.state === "lobby" || room.state === "finished") {
+    conn.roomId = room.id;
+    conn.playerId = player.id;
+    leaveRoom(conn, { immediate: false });
+    return;
+  }
+
+  // Während einer Partie hängen Punkte am Platz, also bleibt er reserviert.
   ensureHost(room);
   broadcastRoom(room);
   player.dropTimer = setTimeout(() => {
     if (player.connected) return;
     conn.roomId = room.id;
     conn.playerId = player.id;
-    leaveRoom(conn, { immediate: room.state === "playing" || room.state === "countdown" });
-  }, DISCONNECT_GRACE_MS);
+    leaveRoom(conn, { immediate: true });
+  }, SEAT_GRACE_MS);
 }
 
 // ---------------------------------------------------------------------------
