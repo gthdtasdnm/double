@@ -678,10 +678,14 @@ async function serveStatic(pathname) {
 
 Deno.serve({ port: PORT, hostname: HOST, onListen: ({ port }) => {
   console.log(`\n  🎯  Double läuft:  http://localhost:${port}`);
+  // Die Adressen im Netz nur nennen, wenn dort auch wirklich jemand lauscht.
+  // Hinter dem Reverse Proxy (HOST=127.0.0.1) waere das eine Falschauskunft.
   try {
-    for (const net of Deno.networkInterfaces()) {
-      if (net.family === "IPv4" && !net.address.startsWith("127.")) {
-        console.log(`      im Netzwerk:   http://${net.address}:${port}`);
+    if (HOST === "0.0.0.0") {
+      for (const net of Deno.networkInterfaces()) {
+        if (net.family === "IPv4" && !net.address.startsWith("127.")) {
+          console.log(`      im Netzwerk:   http://${net.address}:${port}`);
+        }
       }
     }
   } catch { /* ohne --allow-sys einfach überspringen */ }
