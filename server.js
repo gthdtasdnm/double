@@ -1,4 +1,4 @@
-// Double – Multiplayer-Symbolsuchspiel
+// Seconds – Multiplayer-Symbolsuchspiel
 // Start:  deno run --allow-net --allow-read server.js
 //
 // Zero-Dependency: HTTP + WebSockets kommen komplett aus der Deno-Runtime.
@@ -677,7 +677,7 @@ async function serveStatic(pathname) {
 }
 
 Deno.serve({ port: PORT, hostname: HOST, onListen: ({ port }) => {
-  console.log(`\n  🎯  Double läuft:  http://localhost:${port}`);
+  console.log(`\n  🎯  Seconds läuft:  http://localhost:${port}`);
   // Die Adressen im Netz nur nennen, wenn dort auch wirklich jemand lauscht.
   // Hinter dem Reverse Proxy (HOST=127.0.0.1) waere das eine Falschauskunft.
   try {

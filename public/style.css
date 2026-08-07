@@ -1,5 +1,5 @@
 /* ══════════════ Gemeinsame Lobby-Basis ══════════════ Anfang ═══════════════
-   Identisch in PickUp, Magic Towers, Reflex Royale und Double. Wer hier etwas
+   Identisch in Keep, Card Chaos, Lucky Reflex und Seconds. Wer hier etwas
    ändert, ändert es in allen vier – der Block wird von Hand synchron gehalten,
    es gibt bewusst keinen Build-Schritt.
 
@@ -28,7 +28,7 @@
 }
 
 /* Screens: beide Schaltklassen, damit jedes Spiel seinen bisherigen
-   Umschalter behalten kann (.on in Magic Towers, .active in den anderen). */
+   Umschalter behalten kann (.on in Card Chaos, .active in den anderen). */
 .screen.on, .screen.active, .view.active { display: flex; }
 
 /* ── Typo ─────────────────────────────────────────────────────────────── */
@@ -218,7 +218,7 @@ input:focus, select:focus {
 
 /* ══════════════ Gemeinsame Lobby-Basis ══════════════ Ende ═════════════════ */
 
-/* Double: eigener Akzent + Altnamen, die der Spielteil weiterbenutzt. */
+/* Seconds: eigener Akzent + Altnamen, die der Spielteil weiterbenutzt. */
 :root {
   --akzent: var(--good);
   --akzent2: var(--cool);
@@ -260,10 +260,10 @@ body {
 
 .brand { text-align: center; }
 
-/* Doubles Warteraum-Panel darf breiter werden als die Startseite. */
+/* Das Warteraum-Panel darf breiter werden als die Startseite. */
 #view-room .panel.wide { max-width: 480px; }
 
-/* Kurzmeldung unten – Double schaltet sie über .show, nicht per Animation. */
+/* Kurzmeldung unten – Seconds schaltet sie über .show, nicht per Animation. */
 #toast {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: max(20px, env(safe-area-inset-bottom));

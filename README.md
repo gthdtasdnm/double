@@ -1,6 +1,6 @@
-# Double 🎯
+# Seconds 🎯
 
-Ein Mehrspieler-Browserspiel nach dem Prinzip von *Dobble/Spot it!*:
+Ein Mehrspieler-Browserspiel um Symbolerkennung unter Zeitdruck:
 Deine Karte und die Karte in der Mitte haben **genau ein** gemeinsames Symbol.
 Wer es zuerst antippt, bekommt den Punkt.
 
@@ -48,7 +48,7 @@ vom Server, damit niemand eine leichtere Ansicht bekommt.
 
 ## Deployment (Ubuntu-Server hinter Apache)
 
-Läuft als eigener Dienst auf einem lokalen Port; Apache reicht `/double/`
+Läuft als eigener Dienst auf einem lokalen Port; Apache reicht `/seconds/`
 per Reverse Proxy durch. Die Vorlagen liegen in `deploy/`.
 
 Die vollständigen Server- und Deployment-Konventionen – Portvergabe, Apache,
@@ -57,27 +57,27 @@ projektunabhängig und gehört in jedes neue Spiel kopiert.
 
 ```sh
 # 1. Klonen und freien Port bestätigen
-sudo git clone <repo-url> /var/www/html/double
-sudo chown -R www-data:www-data /var/www/html/double
+sudo git clone <repo-url> /var/www/html/seconds
+sudo chown -R www-data:www-data /var/www/html/seconds
 ss -tlnp | grep 8077          # muss leer sein, sonst PORT in der Unit ändern
 
 # 2. Dienst einrichten (deno-Pfad/Port in der Datei prüfen!)
-sudo cp /var/www/html/double/deploy/double.service /etc/systemd/system/
+sudo cp /var/www/html/seconds/deploy/seconds.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now double
-systemctl status double
+sudo systemctl enable --now seconds
+systemctl status seconds
 
 # 3. Apache: Module aktivieren, Block in den 443-vhost von inf-zeus.de
 sudo a2enmod proxy proxy_http proxy_wstunnel
 sudo apache2ctl configtest && sudo systemctl reload apache2
 ```
 
-Der Inhalt für den vhost steht in `deploy/apache-double.conf`. Wichtig sind
+Der Inhalt für den vhost steht in `deploy/apache-seconds.conf`. Wichtig sind
 zwei Dinge: die WebSocket-Regel muss **vor** der HTTP-Regel stehen, und
-`/double` wird auf `/double/` umgeleitet – ohne Slash würden `style.css` und
+`/seconds` wird auf `/seconds/` umgeleitet – ohne Slash würden `style.css` und
 `app.js` relativ zur Domainwurzel aufgelöst.
 
-Update später: `git pull && sudo systemctl restart double`.
+Update später: `git pull && sudo systemctl restart seconds`.
 
 ## Aufbau
 

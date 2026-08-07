@@ -10,8 +10,8 @@ const views = {
 let ws = null;
 let state = null;          // letzter Snapshot vom Server
 let clockOffset = 0;       // serverZeit - clientZeit
-let pid = sessionStorage.getItem("dbl_pid");
-let roomId = sessionStorage.getItem("dbl_room");
+let pid = sessionStorage.getItem("sec_pid");
+let roomId = sessionStorage.getItem("sec_room");
 let renderedCenterKey = "";
 let renderedHandKey = "";
 let lockTimer = null;
@@ -27,7 +27,7 @@ const serverNow = () => Date.now() + clockOffset;
 /* ------------------------------------------------------------------ */
 function connect() {
   // Relativ zum Basispfad, damit es auch hinter einem Reverse Proxy
-  // unter einem Unterpfad läuft (z. B. https://host/double/ws).
+  // unter einem Unterpfad läuft (z. B. https://host/seconds/ws).
   const url = new URL("ws", document.baseURI);
   url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(url);
@@ -50,8 +50,8 @@ function connect() {
       case "joined":
         roomId = msg.roomId;
         pid = msg.pid;
-        sessionStorage.setItem("dbl_room", roomId);
-        sessionStorage.setItem("dbl_pid", pid);
+        sessionStorage.setItem("sec_room", roomId);
+        sessionStorage.setItem("sec_pid", pid);
         break;
       case "state":
         applyState(msg);
@@ -79,8 +79,8 @@ function send(obj) {
 
 function clearSession() {
   roomId = null; pid = null; state = null;
-  sessionStorage.removeItem("dbl_room");
-  sessionStorage.removeItem("dbl_pid");
+  sessionStorage.removeItem("sec_room");
+  sessionStorage.removeItem("sec_pid");
   renderedCenterKey = renderedHandKey = "";
 }
 
@@ -109,7 +109,7 @@ const avatarFor = (id) =>
   AVATARS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATARS.length];
 
 const nameInput = $("nameInput");
-nameInput.value = localStorage.getItem(NAME_KEY) || localStorage.getItem("dbl_name") || "";
+nameInput.value = localStorage.getItem(NAME_KEY) || "";
 nameInput.addEventListener("input", () => localStorage.setItem(NAME_KEY, nameInput.value));
 
 let visibility = "public";
@@ -196,7 +196,7 @@ $("startBtn").onclick = () => send({ t: "start" });
 
 $("copyBtn").onclick = async () => {
   if (!state?.room) return;
-  // Gegen document.baseURI gebaut: funktioniert unter /double/ hinter dem
+  // Gegen document.baseURI gebaut: funktioniert unter /seconds/ hinter dem
   // Reverse Proxy genauso wie lokal auf localhost:8000.
   const link = new URL("#" + state.room.id, document.baseURI).href;
   try {
@@ -440,7 +440,7 @@ function beep(freq, dur, type = "sine") {
 /* ------------------------------------------------------------------ */
 /* Geteilter Link                                                      */
 /* ------------------------------------------------------------------ */
-// .../double/#AB3K – der Link ist die ganze Interaktion. Wer ihn öffnet, soll
+// .../seconds/#AB3K – der Link ist die ganze Interaktion. Wer ihn öffnet, soll
 // im Raum landen und nicht auf einer Startseite, auf der er den Raum erst
 // suchen muss. Ist der Name schon bekannt, passiert das ohne einen Klick.
 const shared = (location.hash || "").replace("#", "").toUpperCase().trim();

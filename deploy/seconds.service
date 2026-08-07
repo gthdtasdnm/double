@@ -1,5 +1,5 @@
 [Unit]
-Description=Double – Multiplayer-Symbolsuchspiel
+Description=Seconds – Multiplayer-Symbolsuchspiel
 After=network.target
 
 [Service]
@@ -11,7 +11,7 @@ Type=simple
 # /root/.deno/bin/, nach /usr/local/bin/deno kopieren.
 User=www-data
 Group=www-data
-WorkingDirectory=/var/www/html/double
+WorkingDirectory=/var/www/html/seconds
 ExecStart=/usr/local/bin/deno run --allow-net --allow-read --allow-env --allow-sys server.js
 Environment=PORT=8077
 # Nur lokal binden – erreichbar ist der Dienst ausschließlich über Apache.
