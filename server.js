@@ -3,6 +3,15 @@
 //
 // Zero-Dependency: HTTP + WebSockets kommen komplett aus der Deno-Runtime.
 
+import {
+  absender,
+  darfRaumOeffnen,
+  darfVerbinden,
+  raumVermerkt,
+  verbindungAuf,
+  verbindungZu,
+} from "./bremse.js";
+
 const PORT = Number(Deno.env.get("PORT") ?? 8000);
 // Lokal 0.0.0.0, damit Mitspieler im WLAN direkt draufkommen. Hinter einem
 // Reverse Proxy gehört HOST=127.0.0.1 gesetzt, sonst ist der Dienst unter
@@ -491,9 +500,14 @@ function handleMessage(conn, msg) {
       break;
 
     case "create": {
+      if (!darfRaumOeffnen(conn.ip)) {
+        send(conn, { t: "error", msg: "Zu viele Raeume in kurzer Zeit. Warte kurz." });
+        return;
+      }
       const name = String(msg.name ?? "").trim().slice(0, 16) || "Spieler";
       const roomName = String(msg.roomName ?? "").trim().slice(0, 24);
       const room = createRoom(roomName, msg.isPublic !== false);
+      raumVermerkt(conn.ip);
       joinRoom(conn, room, name);
       break;
     }
@@ -690,16 +704,32 @@ Deno.serve({ port: PORT, hostname: HOST, onListen: ({ port }) => {
     }
   } catch { /* ohne --allow-sys einfach überspringen */ }
   console.log("");
-} }, (req) => {
+} }, (req, info) => {
   const url = new URL(req.url);
 
   if (url.pathname === "/ws") {
     if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("WebSocket erwartet", { status: 400 });
     }
+    const ip = absender(req, info);
+    if (!darfVerbinden(ip)) {
+      // 429 statt stiller Ablehnung: der Client soll den Unterschied zwischen
+      // "Server kaputt" und "du warst zu schnell" sehen koennen.
+      return new Response("Zu viele Verbindungen", { status: 429 });
+    }
     const { socket, response } = Deno.upgradeWebSocket(req);
-    const conn = { ws: socket, roomId: null, playerId: null };
+    const conn = { ws: socket, roomId: null, playerId: null, ip };
+    // Erst zaehlen, wenn die Verbindung wirklich steht - ein abgebrochener
+    // Upgrade soll nicht auf das Konto gehen.
+    let gezaehlt = false;
+    const abmelden = () => {
+      if (!gezaehlt) return;
+      gezaehlt = false;
+      verbindungZu(ip);
+    };
     socket.onopen = () => {
+      gezaehlt = true;
+      verbindungAuf(ip);
       conns.add(conn);
       send(conn, { t: "rooms", rooms: roomList() });
     };
@@ -708,8 +738,8 @@ Deno.serve({ port: PORT, hostname: HOST, onListen: ({ port }) => {
       try { msg = JSON.parse(e.data); } catch { return; }
       try { handleMessage(conn, msg); } catch (err) { console.error("Fehler:", err); }
     };
-    socket.onclose = () => handleClose(conn);
-    socket.onerror = () => handleClose(conn);
+    socket.onclose = () => { abmelden(); handleClose(conn); };
+    socket.onerror = () => { abmelden(); handleClose(conn); };
     return response;
   }
 
