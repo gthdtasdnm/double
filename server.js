@@ -504,7 +504,7 @@ function handleMessage(conn, msg) {
         send(conn, { t: "error", msg: "Zu viele Raeume in kurzer Zeit. Warte kurz." });
         return;
       }
-      const name = String(msg.name ?? "").trim().slice(0, 16) || "Spieler";
+      const name = sauberName(msg.name, "Spieler");
       const roomName = String(msg.roomName ?? "").trim().slice(0, 24);
       const room = createRoom(roomName, msg.isPublic !== false);
       raumVermerkt(conn.ip);
@@ -531,7 +531,7 @@ function handleMessage(conn, msg) {
         return send(conn, { t: "error", msg: "In diesem Raum läuft gerade ein Spiel." });
       }
       cancelIdleClose(room);
-      const name = String(msg.name ?? "").trim().slice(0, 16) || "Spieler";
+      const name = sauberName(msg.name, "Spieler");
       joinRoom(conn, room, name);
       break;
     }
@@ -539,7 +539,11 @@ function handleMessage(conn, msg) {
     case "rejoin": {
       const room = rooms.get(String(msg.roomId ?? "").toUpperCase().trim());
       const player = room?.players.find((p) => p.id === msg.pid);
-      if (!room || !player) return send(conn, { t: "error", msg: "Sitzung abgelaufen.", fatal: true });
+      // Der Ausweis muss stimmen, nicht nur die id. Ohne diese Zeile reicht
+      // eine fremde id aus dem `state`, um jemanden vom Platz zu stossen.
+      if (!room || !player || !msg.token || msg.token !== player.token) {
+        return send(conn, { t: "error", msg: "Sitzung abgelaufen.", fatal: true });
+      }
       cancelIdleClose(room);
       if (player.dropTimer) { clearTimeout(player.dropTimer); player.dropTimer = null; }
       if (player.conn && player.conn !== conn) player.conn.roomId = null;
@@ -548,7 +552,7 @@ function handleMessage(conn, msg) {
       conn.roomId = room.id;
       conn.playerId = player.id;
       ensureHost(room);
-      send(conn, { t: "joined", roomId: room.id, pid: player.id });
+      send(conn, { t: "joined", roomId: room.id, pid: player.id, token: player.token });
       broadcastRoom(room);
       break;
     }
@@ -612,10 +616,38 @@ function ctx(conn) {
   return { room, player };
 }
 
+/** Einmal anlegen, nicht bei jedem Namen neu - das Ding ist teuer. */
+const ZEICHEN = new Intl.Segmenter("de", { granularity: "grapheme" });
+
+/**
+ * Namen entschaerfen: Steuerzeichen raus, dann auf sechzehn *Zeichen*
+ * kuerzen - nicht auf sechzehn UTF-16-Einheiten. Ein Emoji besteht aus
+ * zweien, `slice(0, 16)` schnitt es mittendurch und liess ein
+ * Ersatzzeichen stehen. Zweite Grenze bei 64 Einheiten gegen gestapelte
+ * Kombinationszeichen, abgebrochen wird zwischen zwei Zeichen.
+ * Gleiche Fassung wie `cleanName` in gemeinsam/raum.js, nur mit der
+ * hier ueblichen Laenge.
+ */
+function sauberName(roh, ersatz) {
+  const s = String(roh ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  let kurz = "";
+  for (const z of [...ZEICHEN.segment(s)].slice(0, 16)) {
+    if (kurz.length + z.segment.length > 64) break;
+    kurz += z.segment;
+  }
+  return kurz || ersatz;
+}
+
 function joinRoom(conn, room, name) {
   if (conn.roomId) leaveRoom(conn);
   const player = {
     id: uid(),
+    // Der Ausweis fuer den Wiedereinstieg. Bewusst **nicht** die id: die
+    // steht in jedem `state` bei allen Mitspielern drin. Wer `rejoin` nur
+    // gegen die id prueft, laesst jeden im Raum den Platz eines anderen
+    // uebernehmen - samt dessen Blatt, und der Bestohlene faellt stumm raus.
+    // Genauso trennt es raum.js (dort `id` und `token`).
+    token: uid(),
     name,
     ready: false,
     score: 0,
@@ -629,7 +661,7 @@ function joinRoom(conn, room, name) {
   conn.playerId = player.id;
   // Wer als Erster im Raum ist, ist Host und startet die Partie.
   ensureHost(room);
-  send(conn, { t: "joined", roomId: room.id, pid: player.id });
+  send(conn, { t: "joined", roomId: room.id, pid: player.id, token: player.token });
   broadcastRoom(room);
 }
 

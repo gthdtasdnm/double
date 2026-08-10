@@ -12,6 +12,9 @@ let state = null;          // letzter Snapshot vom Server
 let clockOffset = 0;       // serverZeit - clientZeit
 let pid = sessionStorage.getItem("sec_pid");
 let roomId = sessionStorage.getItem("sec_room");
+// Der Ausweis fuer den Wiedereinstieg. Steht neben pid, weil die pid allein
+// kein Geheimnis ist - sie steht bei allen Mitspielern im Spielstand.
+let token = sessionStorage.getItem("sec_token");
 let renderedCenterKey = "";
 let renderedHandKey = "";
 let lockTimer = null;
@@ -33,7 +36,7 @@ function connect() {
   ws = new WebSocket(url);
 
   ws.onopen = () => {
-    if (pid && roomId) send({ t: "rejoin", roomId, pid });
+    if (pid && roomId && token) send({ t: "rejoin", roomId, pid, token });
     else if (pendingJoin) {
       send({ t: "join", roomId: pendingJoin, name: playerName() });
       pendingJoin = null;   // nur beim ersten Verbinden, nicht bei jedem Reconnect
@@ -52,6 +55,7 @@ function connect() {
         pid = msg.pid;
         sessionStorage.setItem("sec_room", roomId);
         sessionStorage.setItem("sec_pid", pid);
+        if (msg.token) { token = msg.token; sessionStorage.setItem("sec_token", token); }
         break;
       case "state":
         applyState(msg);
@@ -81,6 +85,7 @@ function clearSession() {
   roomId = null; pid = null; state = null;
   sessionStorage.removeItem("sec_room");
   sessionStorage.removeItem("sec_pid");
+  sessionStorage.removeItem("sec_token");
   renderedCenterKey = renderedHandKey = "";
 }
 
